@@ -20,8 +20,9 @@ pub struct ProgramConfig {
     pub min_consensus_threshold_bps: u16,
     /// Admin allowed to decide the winning ballot if vote expires before consensus.
     pub tie_breaker_admin: Pubkey,
-    /// Duration for which ballot box will be opened for voting.
-    pub vote_duration: i64,
+    /// Reserved to preserve the deployed account layout. This was the legacy
+    /// timestamp-based vote duration and is no longer read or configurable.
+    pub reserved: [u8; 8],
     /// The svmgov governance program whose Proposal PDAs are authorized to open
     /// ballot boxes. Checked in `init_ballot_box`; updatable by the authority so
     /// the program can be retargeted at a new svmgov deployment without a redeploy.
