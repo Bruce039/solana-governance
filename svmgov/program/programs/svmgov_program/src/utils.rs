@@ -165,13 +165,26 @@ pub fn is_valid_github_link(link: &str) -> bool {
 /// assert_eq!(get_epoch_slot_range(0), (0, 431_999));
 /// assert_eq!(get_epoch_slot_range(1), (432_000, 863_999));
 /// ```
-pub fn get_epoch_slot_range(epoch: u64) -> (u64, u64) {
-    const SLOTS_PER_EPOCH: u64 = 432_000;
+pub const SLOTS_PER_EPOCH: u64 = 432_000;
 
+pub fn get_epoch_slot_range(epoch: u64) -> (u64, u64) {
     let start_slot = epoch * SLOTS_PER_EPOCH;
     let end_slot = (epoch + 1) * SLOTS_PER_EPOCH - 1;
 
     (start_slot, end_slot)
+}
+
+/// Validates an offset that is added to the beginning of the snapshot epoch.
+/// Negative offsets remain supported and are checked against the current slot
+/// when a proposal is activated; an offset that reaches the next epoch would
+/// put the snapshot at or after voting starts.
+pub fn validate_snapshot_slot_offset(
+    snapshot_slot_offset: i64,
+) -> core::result::Result<(), crate::error::GovernanceError> {
+    if snapshot_slot_offset >= SLOTS_PER_EPOCH as i64 {
+        return Err(crate::error::GovernanceError::InvalidSnapshotSlotOffset);
+    }
+    Ok(())
 }
 
 /// Computes the schedule anchor epoch for a proposal: the epoch whose start slot

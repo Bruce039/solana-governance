@@ -134,4 +134,6 @@ pub enum GovernanceError {
     SupportAlreadyActivated,
     #[msg("New proposals are not allowed at this time")]
     NewProposalsNotAllowed,
+    #[msg("Snapshot slot offset must remain within the snapshot epoch")]
+    InvalidSnapshotSlotOffset,
 }
