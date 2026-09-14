@@ -138,4 +138,6 @@ pub enum GovernanceError {
     SnapshotSlotNotBeforeVotingStart,
     #[msg("Snapshot slot offset must remain within the snapshot epoch")]
     InvalidSnapshotSlotOffset,
+    #[msg("Snapshot slot must leave the minimum required voting window before voting starts")]
+    SnapshotWindowTooShort,
 }

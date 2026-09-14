@@ -181,7 +181,11 @@ pub fn get_epoch_slot_range(epoch: u64) -> (u64, u64) {
 pub fn validate_snapshot_slot_offset(
     snapshot_slot_offset: i64,
 ) -> core::result::Result<(), crate::error::GovernanceError> {
-    if snapshot_slot_offset >= SLOTS_PER_EPOCH as i64 {
+    let latest_snapshot_offset = SLOTS_PER_EPOCH
+        .checked_sub(ncn_snapshot::MIN_VOTE_EXPIRY_SLOTS)
+        .ok_or(crate::error::GovernanceError::ArithmeticOverflow)?;
+
+    if snapshot_slot_offset > latest_snapshot_offset as i64 {
         return Err(crate::error::GovernanceError::InvalidSnapshotSlotOffset);
     }
     Ok(())
@@ -205,14 +209,15 @@ pub fn epoch_start_slot(epoch: u64) -> core::result::Result<u64, crate::error::G
         .ok_or(crate::error::GovernanceError::ArithmeticOverflow)
 }
 
-/// Ensures the stake snapshot can be generated before SVMGov voting opens.
+/// Ensures the stake snapshot leaves NCN operators the required time to reach
+/// consensus before SVMGov voting opens.
 pub fn ensure_snapshot_before_voting_start(
     snapshot_slot: u64,
     voting_start_epoch: u64,
 ) -> core::result::Result<u64, crate::error::GovernanceError> {
     let voting_start_slot = epoch_start_slot(voting_start_epoch)?;
-    if snapshot_slot >= voting_start_slot {
-        return Err(crate::error::GovernanceError::SnapshotSlotNotBeforeVotingStart);
+    if voting_start_slot.saturating_sub(snapshot_slot) < ncn_snapshot::MIN_VOTE_EXPIRY_SLOTS {
+        return Err(crate::error::GovernanceError::SnapshotWindowTooShort);
     }
     Ok(voting_start_slot)
 }
