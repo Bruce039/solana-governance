@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{error::ErrorCode, BallotBox, ProgramConfig};
+use crate::{error::ErrorCode, BallotBox, ProgramConfig, MIN_VOTE_EXPIRY_SLOTS};
 
 #[derive(Accounts)]
 #[instruction(snapshot_slot: u64, proposal_seed: u64, spl_vote_account: Pubkey)]
@@ -50,6 +50,11 @@ pub fn handler(
 
     let program_config = &ctx.accounts.program_config;
     let ballot_box = &mut ctx.accounts.ballot_box;
+
+    require!(
+        vote_expiry_slot.saturating_sub(snapshot_slot) >= MIN_VOTE_EXPIRY_SLOTS,
+        ErrorCode::VoteExpiryTooSoon
+    );
 
     ballot_box.bump = ctx.bumps.ballot_box;
     ballot_box.epoch = clock.epoch;

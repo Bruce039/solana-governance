@@ -5,6 +5,10 @@ use anchor_lang::prelude::*;
 
 pub const MAX_OPERATOR_WHITELIST: usize = 64;
 
+/// Minimum interval between an NCN stake snapshot and the corresponding
+/// SVMGov voting start/ballot expiry. At a 200 ms slot time, this is one hour.
+pub const MIN_VOTE_EXPIRY_SLOTS: u64 = 18_000;
+
 #[derive(InitSpace, Debug)]
 #[account]
 pub struct ProgramConfig {
