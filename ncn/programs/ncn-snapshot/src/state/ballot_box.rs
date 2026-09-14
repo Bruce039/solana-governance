@@ -27,9 +27,8 @@ pub struct BallotBox {
     /// one vote; tallies are not stake-weighted.
     #[max_len(MAX_BALLOT_TALLIES)]
     pub ballot_tallies: Vec<BallotTally>,
-    /// Timestamp when voting ends. Tie breaker admin will decide the results
-    /// if no consensus is reached by then.
-    pub vote_expiry_timestamp: i64,
+    /// Slot when voting ends.
+    pub vote_expiry_slot: u64,
     /// Slot for which the snapshot is taken
     pub snapshot_slot: u64,
     /// Snapshot of whitelisted operators at BallotBox creation
@@ -44,8 +43,8 @@ impl BallotBox {
         Pubkey::find_program_address(&[b"BallotBox", &snapshot_slot.to_le_bytes()], &crate::ID)
     }
 
-    pub fn has_vote_expired(&self, current_timestamp: i64) -> bool {
-        current_timestamp >= self.vote_expiry_timestamp
+    pub fn has_vote_expired(&self, current_slot: u64) -> bool {
+        current_slot >= self.vote_expiry_slot
     }
 
     pub fn has_consensus_reached(&self) -> bool {

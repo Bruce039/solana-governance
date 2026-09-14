@@ -187,6 +187,36 @@ pub fn validate_snapshot_slot_offset(
     Ok(())
 }
 
+/// Returns the epoch at which SVMGov voting begins for a snapshot epoch.
+/// This is the single source of truth for deriving Proposal::start_epoch and
+/// the NCN ballot expiry slot.
+pub fn voting_start_epoch(
+    snapshot_epoch: u64,
+) -> core::result::Result<u64, crate::error::GovernanceError> {
+    snapshot_epoch
+        .checked_add(1)
+        .ok_or(crate::error::GovernanceError::ArithmeticOverflow)
+}
+
+/// Returns the first slot of the given epoch, or an error if the multiplication overflows u64.
+pub fn epoch_start_slot(epoch: u64) -> core::result::Result<u64, crate::error::GovernanceError> {
+    epoch
+        .checked_mul(SLOTS_PER_EPOCH)
+        .ok_or(crate::error::GovernanceError::ArithmeticOverflow)
+}
+
+/// Ensures the stake snapshot can be generated before SVMGov voting opens.
+pub fn ensure_snapshot_before_voting_start(
+    snapshot_slot: u64,
+    voting_start_epoch: u64,
+) -> core::result::Result<u64, crate::error::GovernanceError> {
+    let voting_start_slot = epoch_start_slot(voting_start_epoch)?;
+    if snapshot_slot >= voting_start_slot {
+        return Err(crate::error::GovernanceError::SnapshotSlotNotBeforeVotingStart);
+    }
+    Ok(voting_start_slot)
+}
+
 /// Computes the schedule anchor epoch for a proposal: the epoch whose start slot
 /// drives `snapshot_slot`, and from which `start_epoch` (anchor + 1) and
 /// `end_epoch` are derived.
@@ -205,7 +235,7 @@ pub fn validate_snapshot_slot_offset(
 /// previously guarded against cannot occur there.
 ///
 /// Returns `ArithmeticOverflow` if the summed epoch exceeds `u64`.
-pub fn proposal_target_epoch(
+pub fn proposal_snapshot_epoch(
     support_epoch: u64,
     discussion_epochs: u64,
     snapshot_epoch_extension: u64,
@@ -229,12 +259,16 @@ pub fn proposal_target_epoch(
 /// Returns the validated `snapshot_slot`, or an error if the offset underflows
 /// below zero or the resulting slot is not in the future.
 pub fn compute_future_snapshot_slot(
-    target_epoch: u64,
+    snapshot_epoch: u64,
     snapshot_slot_offset: i64,
     current_slot: u64,
 ) -> core::result::Result<u64, crate::error::GovernanceError> {
-    let (start_slot, _) = get_epoch_slot_range(target_epoch);
-    let offset_result = (start_slot as i64)
+    let start_slot = snapshot_epoch
+        .checked_mul(SLOTS_PER_EPOCH)
+        .ok_or(crate::error::GovernanceError::ArithmeticOverflow)?;
+    let start_slot_i64 =
+        i64::try_from(start_slot).map_err(|_| crate::error::GovernanceError::ArithmeticOverflow)?;
+    let offset_result = start_slot_i64
         .checked_add(snapshot_slot_offset)
         .ok_or(crate::error::GovernanceError::ArithmeticOverflow)?;
     if offset_result < 0 {
@@ -577,7 +611,7 @@ mod tests {
         // support_proposal, anchored on the same epoch, includes the discussion
         // window, so its target is exactly `discussion_epochs` later than flush's.
         let support_target =
-            proposal_target_epoch(current_epoch, discussion_epochs, snapshot_epoch_extension)
+            proposal_snapshot_epoch(current_epoch, discussion_epochs, snapshot_epoch_extension)
                 .unwrap();
         assert_eq!(support_target - flush_target, discussion_epochs);
     }
@@ -586,8 +620,8 @@ mod tests {
     fn target_epoch_includes_discussion_period() {
         // The discussion window must remain part of the schedule. Dropping it (as
         // the old flush did) shortened time-to-vote by exactly `discussion_epochs`.
-        let with_discussion = proposal_target_epoch(9, 3, 1).unwrap();
-        let without_discussion = proposal_target_epoch(9, 0, 1).unwrap();
+        let with_discussion = proposal_snapshot_epoch(9, 3, 1).unwrap();
+        let without_discussion = proposal_snapshot_epoch(9, 0, 1).unwrap();
         assert_eq!(with_discussion - without_discussion, 3);
     }
 
@@ -596,7 +630,7 @@ mod tests {
         // Bounded, admin-set inputs should never reach this, but the checked math
         // surfaces a clean error instead of relying on the release overflow-checks panic.
         assert!(matches!(
-            proposal_target_epoch(u64::MAX, 1, 0),
+            proposal_snapshot_epoch(u64::MAX, 1, 0),
             Err(GovernanceError::ArithmeticOverflow)
         ));
     }

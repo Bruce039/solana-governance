@@ -40,6 +40,7 @@ pub fn handler(
     snapshot_slot: u64,
     _proposal_seed: u64,
     _spl_vote_account: Pubkey,
+    vote_expiry_slot: u64,
 ) -> Result<()> {
     let clock = Clock::get()?;
 
@@ -55,10 +56,7 @@ pub fn handler(
     ballot_box.slot_created = clock.slot;
     ballot_box.snapshot_slot = snapshot_slot;
     ballot_box.min_consensus_threshold_bps = program_config.min_consensus_threshold_bps;
-    ballot_box.vote_expiry_timestamp = clock
-        .unix_timestamp
-        .checked_add(program_config.vote_duration)
-        .unwrap();
+    ballot_box.vote_expiry_slot = vote_expiry_slot;
     ballot_box.voter_list = program_config.whitelisted_operators.clone();
     ballot_box.tie_breaker_consensus = false;
 
