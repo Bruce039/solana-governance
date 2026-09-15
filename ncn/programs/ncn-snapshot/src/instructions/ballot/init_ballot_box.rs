@@ -51,10 +51,7 @@ pub fn handler(
     let program_config = &ctx.accounts.program_config;
     let ballot_box = &mut ctx.accounts.ballot_box;
 
-    require!(
-        vote_expiry_slot.saturating_sub(snapshot_slot) >= MIN_VOTE_EXPIRY_SLOTS,
-        ErrorCode::VoteExpiryTooSoon
-    );
+    validate_vote_expiry_window(snapshot_slot, vote_expiry_slot)?;
 
     ballot_box.bump = ctx.bumps.ballot_box;
     ballot_box.epoch = clock.epoch;
@@ -65,5 +62,13 @@ pub fn handler(
     ballot_box.voter_list = program_config.whitelisted_operators.clone();
     ballot_box.tie_breaker_consensus = false;
 
+    Ok(())
+}
+
+fn validate_vote_expiry_window(snapshot_slot: u64, vote_expiry_slot: u64) -> Result<()> {
+    require!(
+        vote_expiry_slot.saturating_sub(snapshot_slot) >= MIN_VOTE_EXPIRY_SLOTS,
+        ErrorCode::VoteExpiryTooSoon
+    );
     Ok(())
 }
