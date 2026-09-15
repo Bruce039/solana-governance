@@ -463,6 +463,7 @@ export type SvmgovProgram = {
         },
         {
           name: "ballotBox";
+          writable: true;
         },
         {
           name: "ballotProgram";

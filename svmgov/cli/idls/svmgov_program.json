@@ -538,7 +538,8 @@
           ]
         },
         {
-          "name": "ballot_box"
+          "name": "ballot_box",
+          "writable": true
         },
         {
           "name": "ballot_program"
