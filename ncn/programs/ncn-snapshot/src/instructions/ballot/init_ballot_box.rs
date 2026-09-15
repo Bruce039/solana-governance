@@ -72,3 +72,37 @@ fn validate_vote_expiry_window(snapshot_slot: u64, vote_expiry_slot: u64) -> Res
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anchor_lang::error::{Error, ERROR_CODE_OFFSET};
+
+    fn assert_expiry_too_soon(result: Result<()>) {
+        match result.expect_err("expiry window must be rejected") {
+            Error::AnchorError(error) => assert_eq!(
+                error.error_code_number,
+                ERROR_CODE_OFFSET + ErrorCode::VoteExpiryTooSoon as u32
+            ),
+            Error::ProgramError(error) => panic!("unexpected program error: {error:?}"),
+        }
+    }
+
+    #[test]
+    fn minimum_vote_expiry_window_is_inclusive() {
+        let snapshot_slot = 1_000;
+
+        assert!(
+            validate_vote_expiry_window(snapshot_slot, snapshot_slot + MIN_VOTE_EXPIRY_SLOTS)
+                .is_ok()
+        );
+        assert_expiry_too_soon(validate_vote_expiry_window(
+            snapshot_slot,
+            snapshot_slot + MIN_VOTE_EXPIRY_SLOTS - 1,
+        ));
+        assert_expiry_too_soon(validate_vote_expiry_window(
+            snapshot_slot,
+            snapshot_slot - 1,
+        ));
+    }
+}

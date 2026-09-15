@@ -542,6 +542,64 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_offset_accepts_the_latest_valid_boundary() {
+        let latest = (SLOTS_PER_EPOCH - ncn_snapshot::MIN_VOTE_EXPIRY_SLOTS) as i64;
+
+        assert!(validate_snapshot_slot_offset(-1).is_ok());
+        assert!(validate_snapshot_slot_offset(latest).is_ok());
+        assert!(matches!(
+            validate_snapshot_slot_offset(latest + 1),
+            Err(GovernanceError::InvalidSnapshotSlotOffset)
+        ));
+    }
+
+    #[test]
+    fn snapshot_to_voting_window_enforces_both_boundaries() {
+        let voting_start_epoch = 10;
+        let voting_start_slot = epoch_start_slot(voting_start_epoch).unwrap();
+        let minimum = ncn_snapshot::MIN_VOTE_EXPIRY_SLOTS;
+
+        assert_eq!(
+            ensure_snapshot_before_voting_start(voting_start_slot - minimum, voting_start_epoch)
+                .unwrap(),
+            voting_start_slot
+        );
+        assert!(matches!(
+            ensure_snapshot_before_voting_start(
+                voting_start_slot - minimum + 1,
+                voting_start_epoch
+            ),
+            Err(GovernanceError::SnapshotWindowTooShort)
+        ));
+        for snapshot_slot in [voting_start_slot, voting_start_slot + 1] {
+            assert!(matches!(
+                ensure_snapshot_before_voting_start(snapshot_slot, voting_start_epoch),
+                Err(GovernanceError::SnapshotSlotNotBeforeVotingStart)
+            ));
+        }
+    }
+
+    #[test]
+    fn schedule_helpers_reject_arithmetic_boundaries() {
+        assert!(matches!(
+            voting_start_epoch(u64::MAX),
+            Err(GovernanceError::ArithmeticOverflow)
+        ));
+
+        let first_overflowing_epoch = u64::MAX / SLOTS_PER_EPOCH + 1;
+        assert!(matches!(
+            epoch_start_slot(first_overflowing_epoch),
+            Err(GovernanceError::ArithmeticOverflow)
+        ));
+
+        let first_epoch_past_i64 = i64::MAX as u64 / SLOTS_PER_EPOCH + 1;
+        assert!(matches!(
+            compute_future_snapshot_slot(first_epoch_past_i64, 0, 0),
+            Err(GovernanceError::ArithmeticOverflow)
+        ));
+    }
+
+    #[test]
     fn future_snapshot_slot_accepts_future_slot() {
         // Epoch 2 starts at slot 864_000; current slot is well before that.
         assert_eq!(

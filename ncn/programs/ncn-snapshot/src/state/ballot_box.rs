@@ -52,6 +52,37 @@ impl BallotBox {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ballot_box_with_expiry(vote_expiry_slot: u64) -> BallotBox {
+        BallotBox {
+            bump: 0,
+            epoch: 0,
+            slot_created: 0,
+            slot_consensus_reached: 0,
+            min_consensus_threshold_bps: 0,
+            winning_ballot: Ballot::default(),
+            operator_votes: Vec::new(),
+            ballot_tallies: Vec::new(),
+            vote_expiry_slot,
+            snapshot_slot: 0,
+            voter_list: Vec::new(),
+            tie_breaker_consensus: false,
+        }
+    }
+
+    #[test]
+    fn vote_expiry_is_inclusive_at_the_expiry_slot() {
+        let ballot_box = ballot_box_with_expiry(100);
+
+        assert!(!ballot_box.has_vote_expired(99));
+        assert!(ballot_box.has_vote_expired(100));
+        assert!(ballot_box.has_vote_expired(101));
+    }
+}
+
 /// Inner struct of BallotBox
 #[derive(Debug, AnchorSerialize, AnchorDeserialize, Clone, InitSpace, PartialEq, Default)]
 pub struct Ballot {

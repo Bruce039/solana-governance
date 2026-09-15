@@ -112,6 +112,7 @@ struct FlowCtx {
     ballot_box: Address,
     consensus_result: Address,
     snapshot_slot: u64,
+    voting_start_epoch: u64,
     /// Clock values at ballot-box creation (activation of the proposal).
     activation_slot: u64,
     vote_expiry_slot: u64,
@@ -188,12 +189,19 @@ fn setup_flow(operator_count: usize) -> (Harness, FlowCtx) {
             .unwrap_or_else(|e| panic!("support #{i} failed: {:?}", e.err));
         activation_compute_units = meta.compute_units_consumed;
     }
-    assert!(
-        fetch_proposal(&h.svm, &proposal).voting,
-        "proposal must activate"
-    );
+    let proposal_account = fetch_proposal(&h.svm, &proposal);
+    assert!(proposal_account.voting, "proposal must activate");
     let ballot_box_account: BallotBox = fetch_ncn_account(&h.svm, &ballot_box);
-    let vote_expiry_slot = ballot_box_account.vote_expiry_slot;
+    let expected_vote_expiry_slot = proposal_account.start_epoch * SLOTS_PER_EPOCH;
+    assert_eq!(
+        ballot_box_account.vote_expiry_slot,
+        expected_vote_expiry_slot
+    );
+    assert!(
+        expected_vote_expiry_slot.saturating_sub(snapshot_slot)
+            >= ncn_snapshot::MIN_VOTE_EXPIRY_SLOTS,
+        "snapshot must leave NCN the minimum consensus window"
+    );
 
     let ctx = FlowCtx {
         admin,
@@ -201,8 +209,9 @@ fn setup_flow(operator_count: usize) -> (Harness, FlowCtx) {
         ballot_box,
         consensus_result: consensus_result_pda(snapshot_slot),
         snapshot_slot,
+        voting_start_epoch: proposal_account.start_epoch,
         activation_slot: clock.slot,
-        vote_expiry_slot,
+        vote_expiry_slot: expected_vote_expiry_slot,
         activation_compute_units,
         nonce,
     };
@@ -447,7 +456,13 @@ fn balloting_reaches_consensus_and_finalizes() {
     assert_eq!(bb.winning_ballot, Ballot::default());
     assert!(bb.operator_votes.is_empty());
     assert!(bb.ballot_tallies.is_empty());
-    assert_eq!(bb.vote_expiry_slot, ctx.vote_expiry_slot);
+    assert_eq!(
+        bb.vote_expiry_slot,
+        ctx.voting_start_epoch * SLOTS_PER_EPOCH
+    );
+    assert!(
+        bb.vote_expiry_slot.saturating_sub(bb.snapshot_slot) >= ncn_snapshot::MIN_VOTE_EXPIRY_SLOTS
+    );
     let expected_voter_list: Vec<_> = ctx
         .operators
         .iter()
@@ -631,9 +646,10 @@ fn tie_breaker_decides_expired_vote() {
     assert_eq!(bb.slot_consensus_reached, 0);
     assert_eq!(bb.winning_ballot, Ballot::default());
 
-    // Tie breaking is only allowed after expiry, and only by the admin.
+    // Advancing wall-clock time alone must not expire slot-based voting.
     let admin = ctx.admin.insecure_clone();
     let winning = ballot(222, 222);
+    set_clock_timestamp(&mut h.svm, i64::MAX);
     let ix = set_tie_breaker_ix(&admin.pubkey(), ctx.ballot_box, &winning);
     assert_ncn_err(
         try_send(&mut h, &admin, &mut ctx.nonce, &[ix]),
@@ -647,9 +663,10 @@ fn tie_breaker_decides_expired_vote() {
         anchor_lang::error::ErrorCode::ConstraintHasOne,
     );
 
-    // Expire the vote; the admin may then decide with ANY ballot.
+    // Expiry is inclusive: at the exact expiry slot the admin may decide with
+    // any ballot.
     let mut clock = h.svm.get_sysvar::<Clock>();
-    clock.slot = ctx.vote_expiry_slot + 1;
+    clock.slot = ctx.vote_expiry_slot;
     h.svm.set_sysvar(&clock);
     let consensus_slot = h.svm.get_sysvar::<Clock>().slot;
     let ix = set_tie_breaker_ix(&admin.pubkey(), ctx.ballot_box, &winning);
