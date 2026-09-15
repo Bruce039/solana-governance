@@ -216,6 +216,9 @@ pub fn ensure_snapshot_before_voting_start(
     voting_start_epoch: u64,
 ) -> core::result::Result<u64, crate::error::GovernanceError> {
     let voting_start_slot = epoch_start_slot(voting_start_epoch)?;
+    if snapshot_slot >= voting_start_slot {
+        return Err(crate::error::GovernanceError::SnapshotSlotNotBeforeVotingStart);
+    }
     if voting_start_slot.saturating_sub(snapshot_slot) < ncn_snapshot::MIN_VOTE_EXPIRY_SLOTS {
         return Err(crate::error::GovernanceError::SnapshotWindowTooShort);
     }
