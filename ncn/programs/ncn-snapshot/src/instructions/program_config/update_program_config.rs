@@ -20,6 +20,8 @@ pub fn handler(
     svmgov_program_pubkey: Option<Pubkey>,
 ) -> Result<()> {
     let program_config = &mut ctx.accounts.program_config;
+    program_config.clear_reserved();
+
     if let Some(proposed_authority) = proposed_authority {
         program_config.proposed_authority = Some(proposed_authority);
     }

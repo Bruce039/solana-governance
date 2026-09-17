@@ -38,6 +38,11 @@ impl ProgramConfig {
         Pubkey::find_program_address(&[b"ProgramConfig"], &crate::ID)
     }
 
+    /// Clears the legacy field while preserving its eight-byte account layout.
+    pub fn clear_reserved(&mut self) {
+        self.reserved = [0; 8];
+    }
+
     pub fn remove_operators(&mut self, operators_to_remove: Option<Vec<Pubkey>>) {
         if let Some(operators) = operators_to_remove {
             let remove_set: HashSet<Pubkey> = operators.into_iter().collect();
