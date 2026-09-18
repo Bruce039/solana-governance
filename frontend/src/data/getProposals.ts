@@ -87,11 +87,13 @@ export const getProposals = async (
  * Proposals store the ConsensusResult PDA as soon as support is reached, but
  * the account only exists once the NCN has finalized the snapshot ballot;
  * until then the program rejects every vote. Returns the set of proposal
- * keys whose ConsensusResult account is confirmed to be missing.
+ * keys whose ConsensusResult account could not be confirmed to exist.
  *
- * Only proposals inside their voting window are checked, and a lookup that
- * fails (RPC error, rate limit) leaves that proposal's status as before
- * rather than blocking the whole list.
+ * Only proposals inside their voting window are checked. A lookup that
+ * fails (RPC error, rate limit) does not block the whole list; that proposal
+ * is reported as pending for this refresh, since enabling vote controls
+ * without knowing the account exists would only produce failing
+ * transactions.
  */
 export async function getConsensusPending(
   connection: Connection,
@@ -115,7 +117,7 @@ export async function getConsensusPending(
     candidates
       .filter((_, i) => {
         const result = results[i];
-        return result.status === "fulfilled" && result.value === null;
+        return result.status === "rejected" || result.value === null;
       })
       .map((acc) => acc.publicKey.toBase58()),
   );

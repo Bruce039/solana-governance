@@ -70,7 +70,7 @@ describe("getConsensusPending", () => {
     expect(getAccountInfo).not.toHaveBeenCalled();
   });
 
-  it("treats a failed lookup as not pending instead of failing the list", async () => {
+  it("reports a failed lookup as pending instead of failing the list", async () => {
     const failing = proposal();
     const pending = proposal();
     const getAccountInfo = jest.fn(async (pk: PublicKey) => {
@@ -87,7 +87,7 @@ describe("getConsensusPending", () => {
       CURRENT_EPOCH,
     );
 
-    expect(result.has(failing.publicKey.toBase58())).toBe(false);
+    expect(result.has(failing.publicKey.toBase58())).toBe(true);
     expect(result.has(pending.publicKey.toBase58())).toBe(true);
   });
 });
