@@ -70,7 +70,27 @@ describe("getConsensusPending", () => {
     expect(getAccountInfo).not.toHaveBeenCalled();
   });
 
-  it("reports a failed lookup as pending instead of failing the list", async () => {
+  it("retries a failed lookup before reporting it as pending", async () => {
+    const flaky = proposal();
+    let calls = 0;
+    const getAccountInfo = jest.fn(async () => {
+      calls++;
+      if (calls === 1) throw new Error("429 Too Many Requests");
+      return { data: Buffer.alloc(8), lamports: 1 };
+    });
+    const connection = { getAccountInfo } as unknown as Connection;
+
+    const result = await getConsensusPending(
+      connection,
+      [flaky],
+      CURRENT_EPOCH,
+    );
+
+    expect(result.size).toBe(0);
+    expect(getAccountInfo).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a persistently failing lookup as pending instead of failing the list", async () => {
     const failing = proposal();
     const pending = proposal();
     const getAccountInfo = jest.fn(async (pk: PublicKey) => {
@@ -89,5 +109,6 @@ describe("getConsensusPending", () => {
 
     expect(result.has(failing.publicKey.toBase58())).toBe(true);
     expect(result.has(pending.publicKey.toBase58())).toBe(true);
+    expect(getAccountInfo).toHaveBeenCalledTimes(4); // 3 attempts + 1
   });
 });

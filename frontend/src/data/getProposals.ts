@@ -23,9 +23,9 @@ export const getProposals = async (
   endpoint: string,
   filters:
     | {
-      voting?: boolean;
-      finalized?: boolean;
-    }
+        voting?: boolean;
+        finalized?: boolean;
+      }
     | undefined,
   epochInfo: EpochInfo,
   voteAccountsData: RawVoteAccountsData,
@@ -90,10 +90,11 @@ export const getProposals = async (
  * keys whose ConsensusResult account could not be confirmed to exist.
  *
  * Only proposals inside their voting window are checked. A lookup that
- * fails (RPC error, rate limit) does not block the whole list; that proposal
- * is reported as pending for this refresh, since enabling vote controls
- * without knowing the account exists would only produce failing
- * transactions.
+ * still fails after a few retries (RPC error, rate limit) does not block the
+ * whole list; that proposal is reported as pending, since enabling vote
+ * controls without knowing the account exists would only produce failing
+ * transactions, and useProposals keeps polling while any proposal is
+ * pending so the status recovers without a reload.
  */
 export async function getConsensusPending(
   connection: Connection,
@@ -110,7 +111,10 @@ export async function getConsensusPending(
   );
   const results = await Promise.allSettled(
     candidates.map((acc) =>
-      connection.getAccountInfo(acc.account.consensusResult as PublicKey),
+      getAccountInfoWithRetry(
+        connection,
+        acc.account.consensusResult as PublicKey,
+      ),
     ),
   );
   return new Set(
@@ -121,6 +125,29 @@ export async function getConsensusPending(
       })
       .map((acc) => acc.publicKey.toBase58()),
   );
+}
+
+const CONSENSUS_LOOKUP_ATTEMPTS = 3;
+const CONSENSUS_LOOKUP_BACKOFF_MS = 500;
+
+async function getAccountInfoWithRetry(
+  connection: Connection,
+  account: PublicKey,
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < CONSENSUS_LOOKUP_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, CONSENSUS_LOOKUP_BACKOFF_MS * attempt),
+      );
+    }
+    try {
+      return await connection.getAccountInfo(account);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 export function mapProposalDto(
@@ -189,6 +216,7 @@ export function mapProposalDto(
     finalized,
 
     consensusResult,
+    consensusReached,
     snapshotSlot: raw.snapshotSlot.toNumber(),
 
     proposalBump: raw.proposalBump,
