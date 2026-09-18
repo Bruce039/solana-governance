@@ -49,9 +49,10 @@ export const getProposals = async (
 
   const currentEpoch = epochInfo.epoch;
 
-  const consensusReached = await getConsensusReached(
+  const consensusPending = await getConsensusPending(
     program.provider.connection,
     proposalAccs,
+    currentEpoch,
   );
 
   let data = proposalAccs.map((acc, index) =>
@@ -62,7 +63,7 @@ export const getProposals = async (
       totalStakedLamports,
       epochConstants,
       governanceConfig.clusterSupportPctMinBps,
-      consensusReached.has(acc.publicKey.toBase58()),
+      !consensusPending.has(acc.publicKey.toBase58()),
     ),
   );
 
@@ -86,27 +87,36 @@ export const getProposals = async (
  * Proposals store the ConsensusResult PDA as soon as support is reached, but
  * the account only exists once the NCN has finalized the snapshot ballot;
  * until then the program rejects every vote. Returns the set of proposal
- * keys whose ConsensusResult account exists. Only proposals that can still
- * be voted on are checked.
+ * keys whose ConsensusResult account is confirmed to be missing.
+ *
+ * Only proposals inside their voting window are checked, and a lookup that
+ * fails (RPC error, rate limit) leaves that proposal's status as before
+ * rather than blocking the whole list.
  */
-export async function getConsensusReached(
+export async function getConsensusPending(
   connection: Connection,
   proposalAccs: RawProposalAccount[],
+  currentEpoch: number,
 ): Promise<Set<string>> {
   const candidates = proposalAccs.filter(
     (acc) =>
       acc.account.voting &&
       !acc.account.finalized &&
-      acc.account.consensusResult,
+      acc.account.consensusResult &&
+      currentEpoch >= acc.account.startEpoch.toNumber() &&
+      currentEpoch < acc.account.endEpoch.toNumber(),
   );
-  const infos = await Promise.all(
+  const results = await Promise.allSettled(
     candidates.map((acc) =>
       connection.getAccountInfo(acc.account.consensusResult as PublicKey),
     ),
   );
   return new Set(
     candidates
-      .filter((_, i) => infos[i] !== null)
+      .filter((_, i) => {
+        const result = results[i];
+        return result.status === "fulfilled" && result.value === null;
+      })
       .map((acc) => acc.publicKey.toBase58()),
   );
 }
