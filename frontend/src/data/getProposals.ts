@@ -7,7 +7,12 @@ import {
   type EpochConstants,
 } from "@/lib/proposals";
 import type { ProposalRecord, RawProposalAccount } from "@/types";
-import { EpochInfo, VoteAccountInfo } from "@solana/web3.js";
+import {
+  Connection,
+  EpochInfo,
+  PublicKey,
+  VoteAccountInfo,
+} from "@solana/web3.js";
 
 export interface RawVoteAccountsData {
   current: VoteAccountInfo[];
@@ -44,6 +49,11 @@ export const getProposals = async (
 
   const currentEpoch = epochInfo.epoch;
 
+  const consensusReached = await getConsensusReached(
+    program.provider.connection,
+    proposalAccs,
+  );
+
   let data = proposalAccs.map((acc, index) =>
     mapProposalDto(
       acc,
@@ -52,6 +62,7 @@ export const getProposals = async (
       totalStakedLamports,
       epochConstants,
       governanceConfig.clusterSupportPctMinBps,
+      consensusReached.has(acc.publicKey.toBase58()),
     ),
   );
 
@@ -71,6 +82,35 @@ export const getProposals = async (
   return data;
 };
 
+/**
+ * Proposals store the ConsensusResult PDA as soon as support is reached, but
+ * the account only exists once the NCN has finalized the snapshot ballot;
+ * until then the program rejects every vote. Returns the set of proposal
+ * keys whose ConsensusResult account exists. Only proposals that can still
+ * be voted on are checked.
+ */
+export async function getConsensusReached(
+  connection: Connection,
+  proposalAccs: RawProposalAccount[],
+): Promise<Set<string>> {
+  const candidates = proposalAccs.filter(
+    (acc) =>
+      acc.account.voting &&
+      !acc.account.finalized &&
+      acc.account.consensusResult,
+  );
+  const infos = await Promise.all(
+    candidates.map((acc) =>
+      connection.getAccountInfo(acc.account.consensusResult as PublicKey),
+    ),
+  );
+  return new Set(
+    candidates
+      .filter((_, i) => infos[i] !== null)
+      .map((acc) => acc.publicKey.toBase58()),
+  );
+}
+
 export function mapProposalDto(
   rawAccount: RawProposalAccount,
   index: number,
@@ -78,6 +118,7 @@ export function mapProposalDto(
   totalStakedLamports: number,
   epochConstants: EpochConstants,
   clusterSupportPctMinBps: number,
+  consensusReached: boolean,
 ): ProposalRecord {
   const raw = rawAccount.account;
   const creationEpoch = raw.creationEpoch.toNumber();
@@ -96,6 +137,7 @@ export function mapProposalDto(
     totalStakedLamports,
     clusterSupportPctMinBps,
     consensusResult,
+    consensusReached,
     finalized,
     voting: raw.voting,
     epochConstants,
